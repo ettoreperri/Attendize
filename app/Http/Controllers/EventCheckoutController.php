@@ -20,6 +20,7 @@ use App\Models\ReservedTickets;
 use App\Models\Ticket;
 use App\Services\Order as OrderService;
 use Services\PaymentGateway\Factory as PaymentGatewayFactory;
+use Services\PaymentGateway\StripeSCA;
 use Carbon\Carbon;
 use Config;
 use Cookie;
@@ -425,7 +426,32 @@ class EventCheckoutController extends Controller
             $order_total = $order_service->getGrandTotal();
             $order_email = $ticket_order['request_data'][0]['order_email'];
 
-            $response = $gateway->startTransaction($order_total, $order_email, $event);
+            $isStripeScaGateway = $ticket_order['payment_gateway']->name === StripeSCA::GATEWAY_NAME;
+            $transactionAlreadyCompleted = false;
+
+            if ($isStripeScaGateway && !empty($request->get('payment_intent'))) {
+                $response = $gateway->completeTransaction(['payment_intent' => $request->get('payment_intent')]);
+                $transactionAlreadyCompleted = true;
+            } else {
+                $response = $gateway->startTransaction($order_total, $order_email, $event);
+            }
+
+            if ($isStripeScaGateway && method_exists($response, 'getData')) {
+                $responseData = $response->getData();
+                if (is_object($responseData) && method_exists($responseData, 'toArray')) {
+                    $responseData = $responseData->toArray();
+                }
+                $paymentIntentStatus = is_array($responseData) ? ($responseData['status'] ?? null) : null;
+
+                if (in_array($paymentIntentStatus, ['requires_action', 'requires_source_action'], true)) {
+                    return response()->json([
+                        'status' => 'requires_action',
+                        'paymentIntentClientSecret' => $responseData['client_secret'] ?? null,
+                        'payment_intent' => $responseData['id'] ?? null,
+                        'message' => 'Additional authentication is required to complete your payment.',
+                    ]);
+                }
+            }
 
             if ($response->isSuccessful()) {
 
@@ -437,7 +463,9 @@ class EventCheckoutController extends Controller
                 session()->push('ticket_order_' . $event_id . '.transaction_data',
                                 $gateway->getTransactionData() + $additionalData);
 
-                $gateway->completeTransaction($additionalData);
+                if (!$transactionAlreadyCompleted) {
+                    $gateway->completeTransaction($additionalData);
+                }
 
                 return $this->completeOrder($event_id);
 

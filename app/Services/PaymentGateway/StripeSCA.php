@@ -31,11 +31,14 @@ class StripeSCA
             'amount' => $order_total,
             'currency' => $event->currency->code,
             'description' => 'Order for customer: ' . $order_email,
-            'paymentMethod' => $this->options['paymentMethod'],
             'receipt_email' => $order_email,
             'returnUrl' => $returnUrl,
             'confirm' => true
         ];
+
+        if (!empty($this->options['paymentMethod'])) {
+            $this->transaction_data['paymentMethod'] = $this->options['paymentMethod'];
+        }
 
         return $this->transaction_data;
     }
