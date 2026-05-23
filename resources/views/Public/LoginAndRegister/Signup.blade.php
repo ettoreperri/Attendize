@@ -62,6 +62,14 @@
                         <p class="help-block">{{ $errors->first('password_confirmation') }}</p>
                     @endif
                 </div>
+                
+                <div class="form-group {{ ($errors->has('admin_key')) ? 'has-error' : '' }}">
+                    {!! Form::label('admin_key', 'Admin Key', ['class' => 'control-label required']) !!}
+                    {!! Form::password('admin_key',  ['class' => 'form-control']) !!}
+                    @if($errors->has('admin_key'))
+                        <p class="help-block">{{ $errors->first('admin_key') }}</p>
+                    @endif
+                </div>
 
                 @if(Utils::isAttendizeCloud())
                 <div class="form-group {{ ($errors->has('terms_agreed')) ? 'has-error' : '' }}">

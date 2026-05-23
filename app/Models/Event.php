@@ -261,7 +261,9 @@ class Event extends MyBaseModel
     {
         $rows[] = array_merge([
             'Order Ref',
-            'Attendee Name',
+            'Attendee Full Name',
+            'Attendee First Name',
+            'Attendee Last Name',
             'Attendee Email',
             'Attendee Ticket'
         ], $this->questions->pluck('title')->toArray());
@@ -282,6 +284,8 @@ class Event extends MyBaseModel
             $rows[] = array_merge([
                 $attendee->order->order_reference,
                 $attendee->full_name,
+                $attendee->first_name,
+                $attendee->last_name,
                 $attendee->email,
                 $attendee->ticket->title
             ], $answers);

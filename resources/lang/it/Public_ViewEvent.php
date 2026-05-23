@@ -28,7 +28,7 @@ return [
     'business_details' => 'Dettagli Azienda',
     'card_number' => 'Numero di carta',
     'checkout_submit' => 'Checkout',
-    'checkout_order' => 'Continua al pagamento',
+    'checkout_order' => 'Procedi al Checkout',
     'confirmation_email' => 'e una e-mail di conferma è stata inviata al tuo indirizzo.',
     'copy_buyer' => 'Copiare i dettagli acquirente per tutti i possessori del biglietto',
     'currently_not_on_sale' => 'Attualmente non in vendita',

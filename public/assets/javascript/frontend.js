@@ -4704,15 +4704,74 @@ $(function() {
     function stripePaymentMethodHandler(paymentMethod) {
 
         var form = document.getElementById('stripe-sca-payment-form');
-        var hiddenInput = document.createElement('input');
+        var hiddenInput = form.querySelector('input[name="paymentMethod"]') || document.createElement('input');
         hiddenInput.setAttribute('type', 'hidden');
         hiddenInput.setAttribute('name', 'paymentMethod');
         hiddenInput.setAttribute('value', paymentMethod.id);
         form.appendChild(hiddenInput);
 
         var $ajaxFormConf = getAjaxFormConfig($('#stripe-sca-payment-form'));
+        $ajaxFormConf.success = function (data, statusText, xhr, $form) {
+            if (data.status === 'requires_action' && data.paymentIntentClientSecret) {
+                stripe.handleCardAction(data.paymentIntentClientSecret).then(function (result) {
+                    if (result.error) {
+                        var errorElement = document.getElementById('card-errors');
+                        errorElement.textContent = result.error.message;
+
+                        var $submitButton = $form.find('input[type=submit]');
+                        toggleSubmitDisabled($submitButton);
+                        return;
+                    }
+
+                    stripePaymentIntentHandler(result.paymentIntent.id);
+                });
+                return;
+            }
+
+            var $submitButton = $form.find('input[type=submit]');
+            if (data.message) {
+                showMessage(data.message);
+            }
+
+            switch (data.status) {
+                case 'success':
+                    if (data.redirectUrl) {
+                        if (data.redirectData) {
+                            $.redirectPost(data.redirectUrl, data.redirectData);
+                        } else {
+                            if (data.isEmbedded) {
+                                window.parent.location.href = data.redirectUrl;
+                            } else {
+                                document.location.href = data.redirectUrl;
+                            }
+                        }
+                    }
+                    break;
+                case 'error':
+                    if (data.messages) {
+                        processFormErrors($form, data.messages);
+                    }
+                    toggleSubmitDisabled($submitButton);
+                    break;
+
+                default:
+                    break;
+            }
+        };
         $('#stripe-sca-payment-form').ajaxSubmit($ajaxFormConf);
 
+    }
+
+    function stripePaymentIntentHandler(paymentIntentId) {
+        var form = document.getElementById('stripe-sca-payment-form');
+        var hiddenInput = form.querySelector('input[name="payment_intent"]') || document.createElement('input');
+        hiddenInput.setAttribute('type', 'hidden');
+        hiddenInput.setAttribute('name', 'payment_intent');
+        hiddenInput.setAttribute('value', paymentIntentId);
+        form.appendChild(hiddenInput);
+
+        var $ajaxFormConf = getAjaxFormConfig($('#stripe-sca-payment-form'));
+        $('#stripe-sca-payment-form').ajaxSubmit($ajaxFormConf);
     }
 
     $('#pay_offline').change(function () {
