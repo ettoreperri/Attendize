@@ -430,9 +430,56 @@ class EventCheckoutController extends Controller
             $transactionAlreadyCompleted = false;
 
             if ($isStripeScaGateway && !empty($request->get('payment_intent'))) {
-                $response = $gateway->completeTransaction(['payment_intent' => $request->get('payment_intent')]);
+                $response = $gateway->completeTransaction([
+                    'payment_intent' => $request->get('payment_intent'),
+                    'returnUrl' => route('showEventCheckoutPaymentReturn', [
+                        'event_id' => $event_id,
+                        'is_payment_successful' => 1,
+                    ])
+                ]);
                 $transactionAlreadyCompleted = true;
             } else {
+                if ($isStripeScaGateway) {
+                    $request_data = $ticket_order['request_data'][0];
+                    $attendeeData = [
+                        'order_first_name' => $request_data['order_first_name'] ?? '',
+                        'order_last_name' => $request_data['order_last_name'] ?? '',
+                        'attendees' => []
+                    ];
+
+                    foreach ($ticket_order['tickets'] as $ticket_item) {
+                        $ticket_id = $ticket_item['ticket']->id;
+                        $ticket_title = $ticket_item['ticket']->title;
+                        $qty = $ticket_item['qty'];
+
+                        for ($i = 0; $i < $qty; $i++) {
+                            $firstName = $request_data['ticket_holder_first_name'][$i][$ticket_id] ?? '';
+                            $lastName = $request_data['ticket_holder_last_name'][$i][$ticket_id] ?? '';
+                            $name = trim($firstName . ' ' . $lastName);
+                            if (!empty($name)) {
+                                if (!isset($attendeeData['attendees'][$name])) {
+                                    $attendeeData['attendees'][$name] = [];
+                                }
+                                if (!isset($attendeeData['attendees'][$name][$ticket_title])) {
+                                    $attendeeData['attendees'][$name][$ticket_title] = 0;
+                                }
+                                $attendeeData['attendees'][$name][$ticket_title]++;
+                            }
+                        }
+                    }
+
+                    // Converti in formato "2x Standard"
+                    foreach ($attendeeData['attendees'] as $name => $tickets) {
+                        $formatted = [];
+                        foreach ($tickets as $title => $count) {
+                            $formatted[] = $count . 'x ' . $title;
+                        }
+                        $attendeeData['attendees'][$name] = $formatted;
+                    }
+
+                    $gateway->setAttendeeData($attendeeData);
+                }
+
                 $response = $gateway->startTransaction($order_total, $order_email, $event);
             }
 
@@ -444,6 +491,9 @@ class EventCheckoutController extends Controller
                 $paymentIntentStatus = is_array($responseData) ? ($responseData['status'] ?? null) : null;
 
                 if (in_array($paymentIntentStatus, ['requires_action', 'requires_source_action'], true)) {
+                    session()->push('ticket_order_' . $event_id . '.transaction_data', [
+                        'payment_intent' => $responseData['id'] ?? null,
+                    ]);
                     return response()->json([
                         'status' => 'requires_action',
                         'paymentIntentClientSecret' => $responseData['client_secret'] ?? null,
@@ -498,7 +548,7 @@ class EventCheckoutController extends Controller
                     'message' => $response->getMessage(),
                 ]);
             }
-        } catch (\Exeption $e) {
+        } catch (\Exception $e) {
             Log::error($e);
             $error = 'Sorry, there was an error processing your payment. Please try again.';
         }
@@ -531,11 +581,24 @@ class EventCheckoutController extends Controller
         $payment_gateway_factory = new PaymentGatewayFactory();
         $gateway = $payment_gateway_factory->create($ticket_order['payment_gateway']->name, $payment_gateway_config);
         $gateway->extractRequestParameters($request);
-        $response = $gateway->completeTransaction($ticket_order['transaction_data'][0]);
+        $returnUrl = route('showEventCheckoutPaymentReturn', [
+            'event_id' => $event_id,
+            'is_payment_successful' => 1,
+        ]);
+        $intentData = ['returnUrl' => $returnUrl];
+        if ($request->has('payment_intent')) {
+            $intentData['payment_intent'] = $request->get('payment_intent');
+        } elseif (isset($ticket_order['transaction_data'][0])) {
+            $intentData = array_merge($intentData, $ticket_order['transaction_data'][0]);
+        }
+        $response = $gateway->completeTransaction($intentData);
 
 
         if ($response->isSuccessful()) {
             session()->push('ticket_order_' . $event_id . '.transaction_id', $response->getTransactionReference());
+            if (!isset($ticket_order['transaction_data'][0]) && $request->has('payment_intent')) {
+                session()->push('ticket_order_' . $event_id . '.transaction_data', ['payment_intent' => $request->get('payment_intent')]);
+            }
             return $this->completeOrder($event_id, false);
         } else {
             session()->flash('message', $response->getMessage());

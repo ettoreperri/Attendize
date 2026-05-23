@@ -71,7 +71,7 @@
         @yield('content')
 
         @include("Shared.Partials.LangScript")
-        {!!Html::script('assets/javascript/frontend.js')!!}
+        {!!Html::script('assets/javascript/frontend.js?v=2')!!}
 
         @if(isset($secondsToExpire))
         <script>

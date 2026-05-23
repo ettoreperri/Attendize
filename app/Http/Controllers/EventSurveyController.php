@@ -11,6 +11,8 @@ use App\Models\QuestionType;
 use Excel;
 use Illuminate\Http\Request;
 use JavaScript;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /*
   Attendize.com   - Event Management & Ticketing
@@ -255,7 +257,7 @@ class EventSurveyController extends MyBaseController
      * @param $event_id
      * @param string $export_as
      */
-    public function showExportAnswers(Request $request, $event_id, $export_as = 'xlsx')
+    public function showExportAnswersOld(Request $request, $event_id, $export_as = 'xlsx')
     {
         Excel::create('answers-as-of-' . date('d-m-Y-g.i.a'), function ($excel) use ($event_id) {
 
@@ -277,6 +279,32 @@ class EventSurveyController extends MyBaseController
                 });
             });
         })->export($export_as);
+    }
+    
+    public function showExportAnswers(Request $request, $event_id, $export_as = 'xlsx')
+    {
+        $event = Event::scope()->findOrFail($event_id);
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle(trans("Controllers.survey_answers"));
+
+        // Set the column headers
+        $sheet->fromArray(array_keys($event->survey_answers), null, 'A1');
+
+        // Set the data
+        $sheet->fromArray($event->survey_answers, null, 'A2');
+
+        // Set gray background on first row
+        $sheet->getStyle('A1:' . $sheet->getHighestColumn() . '1')->getFill()
+            ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+            ->getStartColor()->setARGB('f5f5f5');
+
+        $filename = 'answers-as-of-' . date('d-m-Y-g.i.a') . '.' . $export_as;
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($filename);
+
+        return response()->download($filename);
     }
 
     /**

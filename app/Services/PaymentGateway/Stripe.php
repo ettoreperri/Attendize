@@ -13,6 +13,8 @@ class Stripe
 
     private $extra_params = ['stripeToken'];
 
+    private $options = [];
+
     public function __construct($gateway)
     {
         $this->gateway = $gateway;
@@ -24,7 +26,7 @@ class Stripe
         $this->transaction_data = [
             'amount' => $order_total,
             'currency' => $event->currency->code,
-            'description' => 'Order for customer: ' . $order_email,
+            'description' => 'Event '. $event->id.' - Order for customer: ' . $order_email,
             'token' => $this->options['stripeToken'],
             'receipt_email' => $order_email
         ];

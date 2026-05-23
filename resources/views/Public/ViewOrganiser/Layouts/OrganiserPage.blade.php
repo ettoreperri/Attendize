@@ -43,7 +43,7 @@
             <span style="font-size:11px;">@lang("basic.TOP")</span></a>
 
         @include("Shared.Partials.LangScript")
-        {!!Html::script('assets/javascript/frontend.js')!!}
+        {!!Html::script('assets/javascript/frontend.js?v=2')!!}
 
         @include('Shared.Partials.GlobalFooterJS')
         @yield('foot')

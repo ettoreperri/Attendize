@@ -145,7 +145,7 @@ $(function() {
         var $ajaxFormConf = getAjaxFormConfig($('#stripe-sca-payment-form'));
         $ajaxFormConf.success = function (data, statusText, xhr, $form) {
             if (data.status === 'requires_action' && data.paymentIntentClientSecret) {
-                stripe.confirmCardPayment(data.paymentIntentClientSecret).then(function (result) {
+                stripe.handleCardAction(data.paymentIntentClientSecret).then(function (result) {
                     if (result.error) {
                         var errorElement = document.getElementById('card-errors');
                         errorElement.textContent = result.error.message;

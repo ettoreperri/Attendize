@@ -51,12 +51,14 @@ class UserSignupController extends Controller
      */
     public function postSignup(Request $request)
     {
+    $pepper = config('attendize.admin_key');
         $is_attendize = Utils::isAttendizeCloud();
         $this->validate($request, [
             'email'        => 'required|email|unique:users',
             'password'     => 'required|min:8|confirmed',
             'first_name'   => 'required',
             'last_name'   => 'required',
+            'admin_key'   => 'required|in:'.$pepper,
             'terms_agreed' => $is_attendize ? 'required' : ''
         ]);
 

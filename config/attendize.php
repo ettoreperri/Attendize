@@ -67,8 +67,8 @@ return [
     'default_date_picker_seperator' => env('DEFAULT_DATEPICKER_SEPERATOR', '-'),
     'default_datetime_format'       => env('DEFAULT_DATETIME_FORMAT', 'Y-m-d H:i'),
     'default_query_cache'           => 120, #Minutes
-    'default_locale'                => 'en',
-    'default_payment_gateway'       => 1, #Stripe=1 Paypal=2
+    'default_locale'                => 'it',
+    'default_payment_gateway'       => 1, #Stripe=1 #Paypal=2
 
     'cdn_url_user_assets'   => '',
     'cdn_url_static_assets' => '',
@@ -81,5 +81,6 @@ return [
         'captcha_type' => strtolower(env('CAPTCHA_TYPE')),
         'captcha_key' => env('CAPTCHA_KEY'),
         'captcha_secret' => env('CAPTCHA_SECRET')
-    ]
+    ],
+    'admin_key' => env('ADMIN_KEY', 'password')
 ];

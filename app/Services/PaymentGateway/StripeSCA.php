@@ -13,10 +13,19 @@ class StripeSCA
 
     private $extra_params = ['paymentMethod', 'payment_intent'];
 
+    private $options = [];
+
+    private $attendee_data = [];
+
     public function __construct($gateway)
     {
         $this->gateway = $gateway;
         $this->options = [];
+    }
+
+    public function setAttendeeData($attendee_data)
+    {
+        $this->attendee_data = $attendee_data;
     }
 
     private function createTransactionData($order_total, $order_email, $event)
@@ -27,13 +36,30 @@ class StripeSCA
             'is_payment_successful' => 1,
         ]);
 
+        $metadata = [
+            'event_id' => (string) $event->id,
+            'customer_email' => $order_email,
+        ];
+
+        if (!empty($this->attendee_data['order_first_name'])) {
+            $metadata['customer_first_name'] = $this->attendee_data['order_first_name'];
+        }
+        if (!empty($this->attendee_data['order_last_name'])) {
+            $metadata['customer_last_name'] = $this->attendee_data['order_last_name'];
+        }
+
+        if (!empty($this->attendee_data['attendees'])) {
+            $metadata['attendees'] = json_encode($this->attendee_data['attendees'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+
         $this->transaction_data = [
             'amount' => $order_total,
             'currency' => $event->currency->code,
-            'description' => 'Order for customer: ' . $order_email,
+            'description' => 'Event '. $event->id.' - Order for customer: ' . $order_email,
             'receipt_email' => $order_email,
             'returnUrl' => $returnUrl,
-            'confirm' => true
+            'confirm' => true,
+            'metadata' => $metadata
         ];
 
         if (!empty($this->options['paymentMethod'])) {
@@ -81,9 +107,17 @@ class StripeSCA
         $response = $paymentIntent->send();
 
         if ($response->requiresConfirmation()) {
-            $confirmResponse = $this->gateway->confirm($intentData)->send();
+            $confirmData = $intentData;
+            if (!empty($data['returnUrl'])) {
+                $confirmData['returnUrl'] = $data['returnUrl'];
+            } elseif (!empty($this->transaction_data['returnUrl'])) {
+                $confirmData['returnUrl'] = $this->transaction_data['returnUrl'];
+            }
+            $confirmResponse = $this->gateway->confirm($confirmData)->send();
             if ($confirmResponse->isSuccessful()) {
                 $response = $this->gateway->capture($intentData)->send();
+            } else {
+                $response = $confirmResponse;
             }
         } else {
             $response = $this->gateway->capture($intentData)->send();
