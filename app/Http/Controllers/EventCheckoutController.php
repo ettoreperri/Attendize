@@ -505,10 +505,11 @@ class EventCheckoutController extends Controller
 
             if ($response->isSuccessful()) {
 
-                session()->push('ticket_order_' . $event_id . '.transaction_id',
-                    $response->getTransactionReference());
-
                 $additionalData = ($gateway->storeAdditionalData()) ? $gateway->getAdditionalData($response) : array();
+
+                // Use Charge ID if available (Stripe SCA), otherwise fallback to transaction reference
+                $transactionReference = $additionalData['transaction_id'] ?? $response->getTransactionReference();
+                session()->push('ticket_order_' . $event_id . '.transaction_id', $transactionReference);
 
                 session()->push('ticket_order_' . $event_id . '.transaction_data',
                                 $gateway->getTransactionData() + $additionalData);
@@ -595,7 +596,9 @@ class EventCheckoutController extends Controller
 
 
         if ($response->isSuccessful()) {
-            session()->push('ticket_order_' . $event_id . '.transaction_id', $response->getTransactionReference());
+            $additionalData = ($gateway->storeAdditionalData()) ? $gateway->getAdditionalData($response) : [];
+            $transactionReference = $additionalData['transaction_id'] ?? $response->getTransactionReference();
+            session()->push('ticket_order_' . $event_id . '.transaction_id', $transactionReference);
             if (!isset($ticket_order['transaction_data'][0]) && $request->has('payment_intent')) {
                 session()->push('ticket_order_' . $event_id . '.transaction_data', ['payment_intent' => $request->get('payment_intent')]);
             }

@@ -128,8 +128,47 @@ class StripeSCA
 
     public function getAdditionalData($response)
     {
+        $paymentIntentId = $response->getPaymentIntentReference();
+        $additionalData['payment_intent'] = $paymentIntentId;
 
-        $additionalData['payment_intent'] = $response->getPaymentIntentReference();
+        // Get the Charge ID from the response data for refunds
+        // Stripe no longer includes charges by default - retrieve with expand
+        $chargeId = null;
+        $responseData = $response->getData();
+
+        // Try to get it from the response first (may be present in older API versions)
+        if (is_object($responseData) && !empty($responseData->charges->data[0]->id)) {
+            $chargeId = $responseData->charges->data[0]->id;
+        } elseif (is_array($responseData) && !empty($responseData['charges']['data'][0]['id'])) {
+            $chargeId = $responseData['charges']['data'][0]['id'];
+        } elseif (is_object($responseData) && !empty($responseData->latest_charge)) {
+            $chargeId = is_object($responseData->latest_charge)
+                ? $responseData->latest_charge->id
+                : $responseData->latest_charge;
+        }
+
+        // If not found in response, retrieve from Stripe API with expand
+        if (!$chargeId && $paymentIntentId) {
+            try {
+                $stripe = new \Stripe\StripeClient($this->gateway->getApiKey());
+                $pi = $stripe->paymentIntents->retrieve(
+                    $paymentIntentId,
+                    ['expand' => ['latest_charge']]
+                );
+                if (!empty($pi->latest_charge->id)) {
+                    $chargeId = $pi->latest_charge->id;
+                } elseif (!empty($pi->latest_charge) && is_string($pi->latest_charge)) {
+                    $chargeId = $pi->latest_charge;
+                }
+            } catch (\Exception $e) {
+                // Charge ID will remain null; refund will handle it via payment_intent
+            }
+        }
+
+        if ($chargeId) {
+            $additionalData['transaction_id'] = $chargeId;
+        }
+
         return $additionalData;
     }
 
@@ -140,22 +179,65 @@ class StripeSCA
 
     public function refundTransaction($order, $refund_amount, $refund_application_fee)
     {
+        if (!empty($order->transaction_id)) {
+            $refundData = [
+                'amount' => $refund_amount,
+                'refundApplicationFee' => $refund_application_fee,
+                'transactionReference' => $order->transaction_id,
+            ];
 
-        $request = $this->gateway->refund([
-            'transactionReference' => $order->transaction_id,
-            'amount' => $refund_amount,
-            'refundApplicationFee' => $refund_application_fee
-        ]);
+            $request = $this->gateway->refund($refundData);
+            $response = $request->send();
 
-        $response = $request->send();
+            if ($response->isSuccessful()) {
+                $refundResponse['successful'] = true;
+            } else {
+                $refundResponse['successful'] = false;
+                $refundResponse['error_message'] = $response->getMessage();
+            }
 
-        if ($response->isSuccessful()) {
-            $refundResponse['successful'] = true;
-        } else {
-            $refundResponse['successful'] = false;
-            $refundResponse['error_message'] = $response->getMessage();
+            return $refundResponse;
         }
 
+        if (!empty($order->payment_intent)) {
+            // Retrieve Charge ID from PaymentIntent, store it, and refund via Stripe SDK
+            try {
+                $stripe = new \Stripe\StripeClient($this->gateway->getApiKey());
+                $paymentIntent = $stripe->paymentIntents->retrieve(
+                    $order->payment_intent,
+                    ['expand' => ['latest_charge', 'charges']]
+                );
+
+                // Try latest_charge first (newer API), then fall back to charges array
+                $chargeId = null;
+                if (!empty($paymentIntent->latest_charge->id)) {
+                    $chargeId = $paymentIntent->latest_charge->id;
+                } elseif (!empty($paymentIntent->charges->data[0]->id)) {
+                    $chargeId = $paymentIntent->charges->data[0]->id;
+                }
+
+                if ($chargeId) {
+                    $order->transaction_id = $chargeId;
+                    $order->save();
+                }
+
+                // Stripe API requires amounts in cents (smallest currency unit)
+                $refund = $stripe->refunds->create([
+                    'payment_intent' => $order->payment_intent,
+                    'amount' => intval($refund_amount * 100),
+                ]);
+
+                $refundResponse['successful'] = true;
+                return $refundResponse;
+            } catch (\Exception $e) {
+                $refundResponse['successful'] = false;
+                $refundResponse['error_message'] = $e->getMessage();
+                return $refundResponse;
+            }
+        }
+
+        $refundResponse['successful'] = false;
+        $refundResponse['error_message'] = 'No transaction ID or payment intent available for refund.';
         return $refundResponse;
     }
 

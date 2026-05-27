@@ -106,7 +106,7 @@ class OrderRefund extends OrderRefundAbstract
     private function checkValidRefundState()
     {
         $errorMessage = false;
-        if (!$this->order->transaction_id) {
+        if (!$this->order->transaction_id && !$this->order->payment_intent) {
             $errorMessage = trans("Controllers.order_cant_be_refunded");
         }
         if ($this->order->is_refunded) {
